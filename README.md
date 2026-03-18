@@ -1,36 +1,22 @@
-# 64bit-ALU-with-Barrel-Shifter-Verilog
+#  Pipelined 64-bit ALU with Barrel Shifter (Verilog)
 
 ##  Overview
 
-This project implements a **64-bit Arithmetic Logic Unit (ALU)** in Verilog integrated with a **high-speed barrel shifter**. The design supports arithmetic, logical, shift, and comparison operations with proper flag generation.
+This project implements a **high-performance 64-bit pipelined ALU** integrated with a **logarithmic barrel shifter**. The design uses a **multi-stage pipeline** to improve throughput and enable high-frequency operation.
 
-##  Features
+---
 
-* 64-bit datapath design
-* Modular architecture (ALU + Barrel Shifter)
-* Supports:
+##  Key Features
 
-  * Addition & Subtraction
-  * Bitwise AND, OR, XOR
-  * Logical Shift Left (SHL)
-  * Logical Shift Right (SHR)
-  * Arithmetic Shift Right (ASR)
-  * Set Less Than (SLT)
-* Status Flags:
+*  64-bit datapath
+*  3-stage pipelined architecture
+*  Integrated barrel shifter (O(log N) delay)
+*  Supports arithmetic, logic, shift, and comparison
+*  Valid signal propagation (valid_in → valid_out)
 
-  * Zero
-  * Negative
-  * Carry
-  * Overflow
+---
 
-##  Barrel Shifter Design
-
-* Logarithmic shifter using 6 stages
-* Shift range: 0–63 bits
-* Supports both logical and arithmetic shifts
-* Time complexity: O(log N)
-
-##  ALU Operations
+##  Supported Operations
 
 | alu_sel | Operation |
 | ------- | --------- |
@@ -44,18 +30,74 @@ This project implements a **64-bit Arithmetic Logic Unit (ALU)** in Verilog inte
 | 0111    | ASR       |
 | 1000    | SLT       |
 
+---
 
+##  Pipeline Stages
+
+###  Stage 1: Input Register Stage
+
+* Latches inputs (`A`, `B`, `alu_sel`)
+* Synchronizes with clock
+* Stores `valid_in`
+
+---
+
+###  Stage 2: Execution Stage
+
+* Performs:
+
+  * Addition/Subtraction
+  * Logic operations
+  * Barrel shifting
+  * Comparison
+* Stores intermediate results
+
+---
+
+###  Stage 3: Output Stage
+
+* Selects final output
+* Generates flags:
+
+  * Zero
+  * Negative
+  * Carry
+  * Overflow
+* Outputs `valid_out`
+
+---
+
+##  Barrel Shifter
+
+* 6-stage logarithmic structure:
+
+  * 32, 16, 8, 4, 2, 1 shifts
+* Supports:
+
+  * Logical left shift
+  * Logical right shift
+  * Arithmetic right shift
+
+---
+
+##  Pipeline Advantage
+
+* Increased throughput
+* Reduced critical path delay
+* Suitable for high-frequency processors
+
+---
 
 ##  Simulation
 
-Simulated using xilinx Vivado.
+Tested using xilinx Vivado
 
 ##  Applications
 
 * CPU datapath design
-* Digital signal processing
-* Embedded systems
-  
+* DSP processors
+* FPGA-based accelerators
+
  ## Verilog Design
 
 ```verilog
@@ -210,150 +252,234 @@ end
 
 endmodule
 ```
-
-## 64-bit ALU Design
+## Pipelined 64-bit ALU (3-Stage Pipeline)
 
 ```verilog
 // ============================================================
-// 64-bit ALU with Barrel Shifter Integration
+// 3-Stage Pipelined 64-bit ALU with Barrel Shifter
 // ============================================================
 
 module alu_64(
+
+input clk,
+input rst,
+
+input valid_in,
 
 input [63:0] A,
 input [63:0] B,
 input [3:0] alu_sel,
 
-output reg [63:0] Y,
+output reg valid_out,
 
-output Zero,
-output Negative,
-output Carry,
-output Overflow
+output reg [63:0] Y,
+output reg Zero,
+output reg Negative,
+output reg Carry,
+output reg Overflow
 
 );
 
-// -------- Operation Decode --------
-wire add_en = (alu_sel == 4'b0000);
-wire sub_en = (alu_sel == 4'b0001);
-wire and_en = (alu_sel == 4'b0010);
-wire or_en  = (alu_sel == 4'b0011);
-wire xor_en = (alu_sel == 4'b0100);
+// ============================================================
+// Stage 1: Input Register Stage
+// ============================================================
 
-wire shl_en = (alu_sel == 4'b0101);
-wire shr_en = (alu_sel == 4'b0110);
-wire asr_en = (alu_sel == 4'b0111);
+reg [63:0] A_s1, B_s1;
+reg [3:0] sel_s1;
+reg valid_s1;
 
-wire slt_en = (alu_sel == 4'b1000);
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        A_s1 <= 0;
+        B_s1 <= 0;
+        sel_s1 <= 0;
+        valid_s1 <= 0;
+    end else begin
+        A_s1 <= A;
+        B_s1 <= B;
+        sel_s1 <= alu_sel;
+        valid_s1 <= valid_in;
+    end
+end
 
-// -------- Adder / Subtractor --------
-wire [63:0] B_mod;
-wire Cin;
+// ============================================================
+// Operation Decode
+// ============================================================
 
-assign B_mod = sub_en ? ~B : B;
-assign Cin   = sub_en ? 1'b1 : 1'b0;
+wire add_en = (sel_s1 == 4'b0000);
+wire sub_en = (sel_s1 == 4'b0001);
+wire and_en = (sel_s1 == 4'b0010);
+wire or_en  = (sel_s1 == 4'b0011);
+wire xor_en = (sel_s1 == 4'b0100);
 
-wire [64:0] adder_out;
+wire shl_en = (sel_s1 == 4'b0101);
+wire shr_en = (sel_s1 == 4'b0110);
+wire asr_en = (sel_s1 == 4'b0111);
 
-assign adder_out = {1'b0,A} + {1'b0,B_mod} + Cin;
+wire slt_en = (sel_s1 == 4'b1000);
 
-wire [63:0] add_out =
-       (add_en | sub_en) ? adder_out[63:0] : 64'b0;
+// ============================================================
+// Stage 2: Execution Stage
+// ============================================================
+
+// -------- Adder/Subtractor --------
+wire [63:0] B_mod = sub_en ? ~B_s1 : B_s1;
+wire Cin = sub_en ? 1'b1 : 1'b0;
+
+wire [64:0] adder_out = {1'b0,A_s1} + {1'b0,B_mod} + Cin;
+wire [63:0] add_out = adder_out[63:0];
 
 // -------- Logic Unit --------
 wire [63:0] logic_out =
-       and_en ? (A & B) :
-       or_en  ? (A | B) :
-       xor_en ? (A ^ B) :
+       and_en ? (A_s1 & B_s1) :
+       or_en  ? (A_s1 | B_s1) :
+       xor_en ? (A_s1 ^ B_s1) :
        64'b0;
 
-// -------- Barrel Shifter Control --------
-wire dir;
-wire arth_shift;
-
-assign dir = shr_en | asr_en;
-assign arth_shift = asr_en;
+// -------- Barrel Shifter --------
+wire dir = shr_en | asr_en;
+wire arth_shift = asr_en;
 
 wire [63:0] shift_out;
 
-// Barrel Shifter Instance
 barrel_shifter SHIFT1(
-    .din(A),
-    .shift(B[5:0]),
+    .din(A_s1),
+    .shift(B_s1[5:0]),
     .dir(dir),
     .arth_shift(arth_shift),
     .dout(shift_out)
 );
 
-// -------- Set Less Than --------
-wire [63:0] slt_out;
+// -------- SLT --------
+wire [63:0] slt_out = (A_s1 < B_s1) ? 64'd1 : 64'd0;
 
-assign slt_out = slt_en ? (A < B ? 64'd1 : 64'd0) : 64'd0;
+// -------- Pipeline Registers --------
+reg [63:0] add_r, logic_r, shift_r, slt_r;
+reg [64:0] adder_out_r;
 
-// -------- Output Selection --------
-always @(*) begin
-    case(alu_sel)
+reg add_en_r, sub_en_r, and_en_r, or_en_r, xor_en_r;
+reg shl_en_r, shr_en_r, asr_en_r, slt_en_r;
+reg valid_s2;
 
-    4'b0000,
-    4'b0001: Y = add_out;
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        add_r <= 0; logic_r <= 0; shift_r <= 0; slt_r <= 0;
+        adder_out_r <= 0;
+        add_en_r <= 0; sub_en_r <= 0;
+        and_en_r <= 0; or_en_r <= 0; xor_en_r <= 0;
+        shl_en_r <= 0; shr_en_r <= 0; asr_en_r <= 0;
+        slt_en_r <= 0;
+        valid_s2 <= 0;
+    end else begin
+        add_r <= add_out;
+        logic_r <= logic_out;
+        shift_r <= shift_out;
+        slt_r <= slt_out;
+        adder_out_r <= adder_out;
 
-    4'b0010,
-    4'b0011,
-    4'b0100: Y = logic_out;
+        add_en_r <= add_en;
+        sub_en_r <= sub_en;
+        and_en_r <= and_en;
+        or_en_r <= or_en;
+        xor_en_r <= xor_en;
+        shl_en_r <= shl_en;
+        shr_en_r <= shr_en;
+        asr_en_r <= asr_en;
+        slt_en_r <= slt_en;
 
-    4'b0101,
-    4'b0110,
-    4'b0111: Y = shift_out;
-
-    4'b1000: Y = slt_out;
-
-    default: Y = 64'b0;
-
-    endcase
+        valid_s2 <= valid_s1;
+    end
 end
 
-// -------- Flags --------
-assign Zero = ~|Y;
+// ============================================================
+// Stage 3: Output Selection Stage
+// ============================================================
 
-assign Negative = Y[63];
+reg [63:0] Y_exec;
+reg valid_s3;
 
-assign Carry =
-      (add_en | sub_en) ? adder_out[64] : 1'b0;
+// Operation Selection
+always @(*) begin
+    if (add_en_r | sub_en_r)
+        Y_exec = add_r;
+    else if (and_en_r | or_en_r | xor_en_r)
+        Y_exec = logic_r;
+    else if (shl_en_r | shr_en_r | asr_en_r)
+        Y_exec = shift_r;
+    else if (slt_en_r)
+        Y_exec = slt_r;
+    else
+        Y_exec = 64'b0;
+end
 
-assign Overflow =
-(add_en) ? ((A[63] & B[63] & ~Y[63]) |
-           (~A[63] & ~B[63] & Y[63])) :
+// Valid Signal Pipeline
+always @(posedge clk or posedge rst) begin
+    if (rst)
+        valid_s3 <= 0;
+    else
+        valid_s3 <= valid_s2;
+end
 
-(sub_en) ? ((A[63] & ~B[63] & ~Y[63]) |
-           (~A[63] & B[63] & Y[63])) :
+// ============================================================
+// Final Output + Flags
+// ============================================================
 
-1'b0;
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        Y <= 0;
+        Zero <= 0;
+        Negative <= 0;
+        Carry <= 0;
+        Overflow <= 0;
+        valid_out <= 0;
+    end else begin
+        Y <= Y_exec;
+
+        Zero <= ~|Y_exec;
+        Negative <= Y_exec[63];
+
+        Carry <= (add_en_r | sub_en_r) ? adder_out_r[64] : 1'b0;
+
+        Overflow <=
+        (add_en_r) ? ((A_s1[63] & B_s1[63] & ~Y_exec[63]) |
+                     (~A_s1[63] & ~B_s1[63] & Y_exec[63])) :
+        (sub_en_r) ? ((A_s1[63] & ~B_s1[63] & ~Y_exec[63]) |
+                     (~A_s1[63] & B_s1[63] & Y_exec[63])) :
+        1'b0;
+
+        valid_out <= valid_s3;
+    end
+end
 
 endmodule
 ```
-
-## ALU Testbench
+## Pipelined ALU Testbench
 
 ```verilog
 `timescale 1ns/1ps
 
-module alu_tb;
+module tb_alu_64;
 
-reg [63:0] A;
-reg [63:0] B;
+reg clk;
+reg rst;
+reg valid_in;
+
+reg [63:0] A, B;
 reg [3:0] alu_sel;
 
 wire [63:0] Y;
-wire Zero;
-wire Negative;
-wire Carry;
-wire Overflow;
+wire Zero, Negative, Carry, Overflow;
+wire valid_out;
 
-// Instantiate ALU
-alu_64 DUT(
+// Instantiate DUT
+alu_64 dut(
+    .clk(clk),
+    .rst(rst),
+    .valid_in(valid_in),
     .A(A),
     .B(B),
     .alu_sel(alu_sel),
+    .valid_out(valid_out),
     .Y(Y),
     .Zero(Zero),
     .Negative(Negative),
@@ -361,42 +487,69 @@ alu_64 DUT(
     .Overflow(Overflow)
 );
 
+// Clock generation (10ns period)
+always #5 clk = ~clk;
+
+// Display signals
 initial begin
+    $display("Time\tvalid_in\tA\tB\tSEL\tvalid_out\tY\tZ\tN\tC\tV");
+    $monitor("%0t\t%b\t%d\t%d\t%b\t%b\t%d\t%b\t%b\t%b\t%b",
+             $time, valid_in, A, B, alu_sel,
+             valid_out, Y, Zero, Negative, Carry, Overflow);
+end
 
-    // Display header
-    $display("time\tA\tB\tALU\tY\tZ\tN\tC\tV");
+// Test stimulus
+initial begin
+    clk = 0;
+    rst = 1;
+    valid_in = 0;
+    A = 0;
+    B = 0;
+    alu_sel = 0;
 
-    // Monitor values continuously
-    $monitor("%0t\t%d\t%d\t%b\t%d\t%b\t%b\t%b\t%b",
-             $time,A,B,alu_sel,Y,Zero,Negative,Carry,Overflow);
+    // Apply reset
+    #10 rst = 0;
 
-    // -------- Arithmetic Operations --------
-    A=15; B=10; alu_sel=4'b0000; #10;   // ADD
-    A=20; B=5;  alu_sel=4'b0001; #10;   // SUB
+    // -------- TEST CASES --------
 
-    // -------- Logic Operations --------
-    A=64'hF0F0; B=64'h0FF0; alu_sel=4'b0010; #10; // AND
-    A=64'hF0F0; B=64'h0FF0; alu_sel=4'b0011; #10; // OR
-    A=64'hAAAA; B=64'h5555; alu_sel=4'b0100; #10; // XOR
+    @(posedge clk);
+    valid_in = 1; A = 10; B = 5; alu_sel = 4'b0000; // ADD
 
-    // -------- Shift Operations --------
-    A=64'h1;  B=2; alu_sel=4'b0101; #10;     // SHL
-    A=64'h10; B=2; alu_sel=4'b0110; #10;     // SHR
-    A=-64'd16; B=2; alu_sel=4'b0111; #10;    // ASR
+    @(posedge clk);
+    A = 10; B = 5; alu_sel = 4'b0001; // SUB
 
-    // -------- Comparison --------
-    A=5; B=10; alu_sel=4'b1000; #10;         // SLT
+    @(posedge clk);
+    A = 12; B = 10; alu_sel = 4'b0010; // AND
 
-    // -------- Edge Cases --------
-    A=5; B=5; alu_sel=4'b0001; #10;          // Zero result
-    A=5; B=10; alu_sel=4'b0001; #10;         // Negative result
+    @(posedge clk);
+    A = 12; B = 10; alu_sel = 4'b0011; // OR
 
-    // -------- Overflow Test --------
-    A=64'h7FFFFFFFFFFFFFFF; B=1; alu_sel=4'b0000; #10;
+    @(posedge clk);
+    A = 12; B = 10; alu_sel = 4'b0100; // XOR
+
+    @(posedge clk);
+    A = 4; B = 1; alu_sel = 4'b0101; // SHL
+
+    @(posedge clk);
+    A = 16; B = 2; alu_sel = 4'b0110; // SHR
+
+    @(posedge clk);
+    A = -8; B = 1; alu_sel = 4'b0111; // ASR
+
+    @(posedge clk);
+    A = 3; B = 5; alu_sel = 4'b1000; // SLT
+
+    // Stop input
+    @(posedge clk);
+    valid_in = 0;
+
+    // Wait for pipeline to flush
+    repeat(10) @(posedge clk);
 
     $finish;
-
 end
 
 endmodule
 ```
+
+
